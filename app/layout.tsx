@@ -37,7 +37,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex h-screen">
-            <div className="w-64 border-r">
+            <div className="">
               <Sidebar />
             </div>
             <div className="flex-1 flex flex-col">
