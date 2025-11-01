@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import Hls from "hls.js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,52 +22,143 @@ import {
   Edit,
   Save,
   X,
+  AudioWaveform,
+  Video,
 } from "lucide-react";
+import { fetchSingleContent } from "@/lib/api/content";
+import { useParams } from "next/navigation";
 
-// Mock data for the preview page
-const mockMediaData = {
-  id: "1",
-  title: "Amazing Nature Documentary - Wildlife in 4K",
-  description:
-    "Experience the breathtaking beauty of nature with this stunning 4K documentary. Follow the journey of wildlife through different seasons and landscapes. This video showcases incredible footage of animals in their natural habitats, from the dense rainforests to the vast savannas.",
-  type: "video",
-  category: "Documentary",
-  tags: ["nature", "wildlife", "4k", "documentary", "animals", "earth"],
-  url: "/sample-video.mp4",
-  published: true,
-  duration: "28:15",
-  uploadDate: "2024-01-15",
-  views: 12450,
-  likes: 892,
-  shares: 234,
-  completionRate: 78,
-  engagement: 65,
-  avgWatchTime: "22:30",
-};
+interface MediaContent {
+  _id: string;
+  title: string;
+  description: string;
+  type: "video" | "audio";
+  categories: string | null;
+  filePath: string;
+  thumbnail: string;
+  isPublished: boolean;
+  numberOfViews: number;
+  createdAt: string;
+  updatedAt: string;
+  tags?: string[];
+  likes?: number;
+  shares?: number;
+  completionRate?: number;
+  engagement?: number;
+  avgWatchTime?: string;
+}
 
-export default function PreviewPage({ params }: { params: { id: string } }) {
-  const [mediaData, setMediaData] = useState(mockMediaData);
+export default function PreviewPage() {
+  const params = useParams();
+  const id = params.id as string;
+
+  const [mediaData, setMediaData] = useState<MediaContent | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [editForm, setEditForm] = useState({
-    title: mediaData.title,
-    description: mediaData.description,
-    tags: mediaData.tags.join(", "),
-    published: mediaData.published,
-  });
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [hls, setHls] = useState<Hls | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const handleSave = () => {
-    setMediaData({
-      ...mediaData,
-      title: editForm.title,
-      description: editForm.description,
-      tags: editForm.tags.split(",").map((tag) => tag.trim()),
-      published: editForm.published,
-    });
-    setIsEditing(false);
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+    tags: "",
+    published: true,
+  });
+
+  useEffect(() => {
+    const fetchContent = async () => {
+      try {
+        setIsLoading(true);
+        const data = await fetchSingleContent(id);
+        setMediaData(data);
+        setEditForm({
+          title: data.title,
+          description: data.description,
+          tags: data.tags?.join(", ") || "",
+          published: data.isPublished,
+        });
+      } catch (err) {
+        console.error("Error fetching single content:", err);
+        setError("Failed to load content");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchContent();
+    }
+  }, [id]);
+
+  // Initialize HLS.js for video streaming
+  useEffect(() => {
+    if (!mediaData || !videoRef.current) return;
+
+    const video = videoRef.current;
+    const isHls = mediaData.filePath.endsWith(".m3u8");
+
+    if (isHls && Hls.isSupported()) {
+      const hlsInstance = new Hls({
+        enableWorker: false,
+        lowLatencyMode: true,
+        backBufferLength: 90,
+      });
+
+      hlsInstance.loadSource(
+        `${process.env.NEXT_PUBLIC_BASE_URL}${mediaData.filePath}`
+      );
+      hlsInstance.attachMedia(video);
+
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log("HLS manifest parsed");
+      });
+
+      hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+        console.error("HLS error:", data);
+      });
+
+      setHls(hlsInstance);
+
+      return () => {
+        if (hlsInstance) {
+          hlsInstance.destroy();
+        }
+      };
+    } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
+      // For Safari and other browsers that support native HLS
+      video.src = `${process.env.NEXT_PUBLIC_BASE_URL}${mediaData.filePath}`;
+    }
+  }, [mediaData]);
+
+  // Get full URLs for media files
+  const getMediaUrl = () => {
+    if (!mediaData?.filePath) return "";
+    return `${process.env.NEXT_PUBLIC_BASE_URL}${mediaData.filePath}`;
+  };
+
+  const getThumbnailUrl = () => {
+    if (!mediaData?.thumbnail) return "/placeholder-thumbnail.jpg";
+    return `${process.env.NEXT_PUBLIC_BASE_URL}${mediaData.thumbnail}`;
+  };
+
+  // Video event handlers
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
   };
 
   const handlePlayPause = () => {
@@ -87,33 +179,116 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (videoRef.current) {
+      videoRef.current.volume = newVolume;
+      setIsMuted(newVolume === 0);
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setCurrentTime(newTime);
+    if (videoRef.current) {
+      videoRef.current.currentTime = newTime;
+    }
+  };
+
+  const handleFullscreen = () => {
+    if (videoRef.current) {
+      if (videoRef.current.requestFullscreen) {
+        videoRef.current.requestFullscreen();
+      }
+    }
+  };
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  const handleSave = () => {
+    if (mediaData) {
+      setMediaData({
+        ...mediaData,
+        title: editForm.title,
+        description: editForm.description,
+        isPublished: editForm.published,
+        tags: editForm.tags.split(",").map((tag) => tag.trim()),
+      });
+      setIsEditing(false);
+      // TODO: Add API call to update content
+    }
+  };
+
+  // Calculate derived analytics data
   const analyticsData = [
     {
       label: "Total Views",
-      value: mediaData.views.toLocaleString(),
+      value: mediaData?.numberOfViews.toLocaleString() || "0",
       change: "+12%",
       icon: Eye,
     },
-
+    {
+      label: "Likes",
+      value: (mediaData?.likes || 0).toLocaleString(),
+      change: "+8%",
+      icon: ThumbsUp,
+    },
+    {
+      label: "Shares",
+      value: (mediaData?.shares || 0).toLocaleString(),
+      change: "+15%",
+      icon: Share2,
+    },
     {
       label: "Completion Rate",
-      value: `${mediaData.completionRate}%`,
+      value: `${mediaData?.completionRate || 0}%`,
       change: "+5%",
       icon: Download,
     },
     {
       label: "Engagement Rate",
-      value: `${mediaData.engagement}%`,
+      value: `${mediaData?.engagement || 0}%`,
       change: "+3%",
       icon: Eye,
     },
     {
       label: "Avg Watch Time",
-      value: mediaData.avgWatchTime,
+      value: mediaData?.avgWatchTime || "0:00",
       change: "+2%",
       icon: Play,
     },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading content...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !mediaData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500">{error || "Content not found"}</p>
+          <Button className="mt-4" onClick={() => window.history.back()}>
+            Go Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const isAudio = mediaData.type === "audio";
 
   return (
     <div className="min-h-screen bg-background">
@@ -150,79 +325,202 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main Content - YouTube-style Layout */}
           <div className="lg:col-span-3 space-y-6">
-            {/* Video Player */}
+            {/* Media Player */}
             <Card className="overflow-hidden group">
               <CardContent className="p-0">
-                <div className="relative bg-black aspect-video">
-                  {/* Actual Video Player */}
-                  <video
-                    ref={videoRef}
-                    className="w-full h-full"
-                    poster="/placeholder-thumbnail.jpg"
-                    onClick={handlePlayPause}
-                  >
-                    <source src={"/robot.mp4"} type="video/mp4" />
-                    Your browser does not support the video tag.
-                  </video>
+                <div
+                  className={`relative bg-black ${
+                    isAudio ? "aspect-video" : "aspect-video"
+                  }`}
+                >
+                  {isAudio ? (
+                    // Audio Player UI
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center text-white p-8">
+                        <AudioWaveform className="h-24 w-24 mx-auto mb-4 text-blue-400" />
+                        <h3 className="text-xl font-semibold mb-2">
+                          Now Playing
+                        </h3>
+                        <p className="text-lg mb-4">{mediaData.title}</p>
+                        <div className="w-full max-w-md mx-auto">
+                          {/* Progress Bar for Audio */}
+                          <div className="mb-4">
+                            <input
+                              type="range"
+                              min="0"
+                              max={duration || 0}
+                              value={currentTime}
+                              onChange={handleSeek}
+                              className="w-full h-2 bg-white/30 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+                            />
+                          </div>
 
-                  {/* Custom Controls appears when hover over the video */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient to-t from-black/80  bg-black/30 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="flex items-center justify-between ">
-                      <div className="flex items-center space-x-4">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-white hover:bg-white/20"
-                          onClick={handlePlayPause}
-                        >
-                          {isPlaying ? (
-                            <Pause className="h-6 w-6" />
-                          ) : (
-                            <Play className="h-6 w-6" fill="white" />
-                          )}
-                        </Button>
+                          {/* Audio Controls */}
+                          <div className="flex items-center justify-center space-x-4">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-white hover:bg-white/20"
+                              onClick={handlePlayPause}
+                            >
+                              {isPlaying ? (
+                                <Pause className="h-8 w-8" />
+                              ) : (
+                                <Play className="h-8 w-8" fill="white" />
+                              )}
+                            </Button>
 
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-white hover:bg-white/20"
-                          onClick={handleMute}
-                        >
-                          {isMuted ? (
-                            <VolumeX className="h-5 w-5" />
-                          ) : (
-                            <Volume2 className="h-5 w-5" />
-                          )}
-                        </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-white hover:bg-white/20"
+                              onClick={handleMute}
+                            >
+                              {isMuted ? (
+                                <VolumeX className="h-6 w-6" />
+                              ) : (
+                                <Volume2 className="h-6 w-6" />
+                              )}
+                            </Button>
 
-                        <div className="text-white text-sm">
-                          0:00 / {mediaData.duration}
+                            {/* Volume Slider */}
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.1"
+                              value={volume}
+                              onChange={handleVolumeChange}
+                              className="w-20 h-1 bg-white/30 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+                            />
+
+                            <div className="text-white text-sm">
+                              {formatTime(currentTime)} / {formatTime(duration)}
+                            </div>
+                          </div>
                         </div>
                       </div>
-
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-white hover:bg-white/20"
-                        >
-                          <Settings className="h-5 w-5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-white hover:bg-white/20"
-                        >
-                          <Maximize className="h-5 w-5" />
-                        </Button>
-                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    // Video Player
+                    <>
+                      <video
+                        ref={videoRef}
+                        className="w-full h-full"
+                        poster={getThumbnailUrl()}
+                        onClick={handlePlayPause}
+                        onLoadedMetadata={handleLoadedMetadata}
+                        onTimeUpdate={handleTimeUpdate}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                        controls={false}
+                      >
+                        <source
+                          src={getMediaUrl()}
+                          type="application/x-mpegURL"
+                        />
+                        Your browser does not support the video tag.
+                      </video>
+
+                      {/* Custom Video Controls */}
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Progress Bar */}
+                        <div className="mb-4">
+                          <input
+                            type="range"
+                            min="0"
+                            max={duration || 0}
+                            value={currentTime}
+                            onChange={handleSeek}
+                            className="w-full h-1 bg-white/30 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-white hover:bg-white/20"
+                              onClick={handlePlayPause}
+                            >
+                              {isPlaying ? (
+                                <Pause className="h-6 w-6" />
+                              ) : (
+                                <Play className="h-6 w-6" fill="white" />
+                              )}
+                            </Button>
+
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-white hover:bg-white/20"
+                              onClick={handleMute}
+                            >
+                              {isMuted ? (
+                                <VolumeX className="h-5 w-5" />
+                              ) : (
+                                <Volume2 className="h-5 w-5" />
+                              )}
+                            </Button>
+
+                            {/* Volume Slider */}
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.1"
+                              value={volume}
+                              onChange={handleVolumeChange}
+                              className="w-20 h-1 bg-white/30 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+                            />
+
+                            <div className="text-white text-sm">
+                              {formatTime(currentTime)} / {formatTime(duration)}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-white hover:bg-white/20"
+                            >
+                              <Settings className="h-5 w-5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-white hover:bg-white/20"
+                              onClick={handleFullscreen}
+                            >
+                              <Maximize className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Hidden audio element for audio files */}
+                  {isAudio && (
+                    <audio
+                      ref={videoRef}
+                      onLoadedMetadata={handleLoadedMetadata}
+                      onTimeUpdate={handleTimeUpdate}
+                      onPlay={() => setIsPlaying(true)}
+                      onPause={() => setIsPlaying(false)}
+                      className="hidden"
+                    >
+                      <source src={getMediaUrl()} type="audio/mpeg" />
+                      Your browser does not support the audio element.
+                    </audio>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Video Information */}
+            {/* Media Information */}
             <Card>
               <CardContent className="p-6">
                 {isEditing ? (
@@ -268,14 +566,18 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                        <span>{mediaData.views.toLocaleString()} views</span>
+                        <span>
+                          {mediaData.numberOfViews.toLocaleString()} views
+                        </span>
                         <span>•</span>
-                        <span>{mediaData.uploadDate}</span>
+                        <span>
+                          {new Date(mediaData.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <Button variant="outline" size="sm">
                           <ThumbsUp className="mr-2 h-4 w-4" />
-                          {mediaData.likes}
+                          {mediaData.likes || 0}
                         </Button>
                         <Button variant="outline" size="sm">
                           <Share2 className="mr-2 h-4 w-4" />
@@ -290,12 +592,16 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
 
                     <div className="flex items-center space-x-2 pt-4 border-t">
                       <Badge
-                        variant={mediaData.published ? "default" : "secondary"}
+                        variant={
+                          mediaData.isPublished ? "default" : "secondary"
+                        }
                       >
-                        {mediaData.published ? "Published" : "Draft"}
+                        {mediaData.isPublished ? "Published" : "Draft"}
                       </Badge>
-                      <Badge variant="outline">{mediaData.category}</Badge>
-                      <Badge variant="outline">{mediaData.duration}</Badge>
+                      <Badge variant="outline">
+                        {mediaData.categories || "Uncategorized"}
+                      </Badge>
+                      <Badge variant="outline">{mediaData.type}</Badge>
                     </div>
 
                     <div>
@@ -304,17 +610,19 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
                       </p>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      {mediaData.tags.map((tag, index) => (
-                        <Badge
-                          key={index}
-                          variant="secondary"
-                          className="cursor-pointer hover:bg-secondary/80"
-                        >
-                          #{tag}
-                        </Badge>
-                      ))}
-                    </div>
+                    {mediaData.tags && mediaData.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {mediaData.tags.map((tag, index) => (
+                          <Badge
+                            key={index}
+                            variant="secondary"
+                            className="cursor-pointer hover:bg-secondary/80"
+                          >
+                            #{tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -363,7 +671,7 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
               <CardContent className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Content ID:</span>
-                  <span className="font-mono">{mediaData.id}</span>
+                  <span className="font-mono">{mediaData._id}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Type:</span>
@@ -371,22 +679,26 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Category:</span>
-                  <span>{mediaData.category}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Duration:</span>
-                  <span>{mediaData.duration}</span>
+                  <span>{mediaData.categories || "Uncategorized"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Upload Date:</span>
-                  <span>{mediaData.uploadDate}</span>
+                  <span>
+                    {new Date(mediaData.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Last Updated:</span>
+                  <span>
+                    {new Date(mediaData.updatedAt).toLocaleDateString()}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Status:</span>
                   <Badge
-                    variant={mediaData.published ? "default" : "secondary"}
+                    variant={mediaData.isPublished ? "default" : "secondary"}
                   >
-                    {mediaData.published ? "Published" : "Draft"}
+                    {mediaData.isPublished ? "Published" : "Draft"}
                   </Badge>
                 </div>
               </CardContent>

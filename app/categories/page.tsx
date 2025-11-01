@@ -47,8 +47,11 @@ export default function CategoriesPage() {
       try {
         const data = await fetchCategories();
         setCategories(data);
-      } catch (err: any) {
-        console.error("Error loading categories:", err.message);
+      } catch (err) {
+        console.error(
+          "Error loading categories:",
+          err instanceof Error ? err.message : String(err)
+        );
       }
     };
 
@@ -63,9 +66,9 @@ export default function CategoriesPage() {
       setCategories((prev) => [result.category, ...prev]);
       setNewCategoryName("");
       setIsDialogOpen(false);
-    } catch (err: any) {
-      alert(err.message);
-    } 
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleEditCategory = () => {
