@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,18 +27,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Plus, Edit, Trash2 } from "lucide-react";
+import { createCategory, fetchCategories } from "@/lib/api/categories";
 
 interface Category {
   id: string;
   name: string;
 }
 
-const initialCategories: Category[] = [
-  { id: "1", name: "Music" },
-  { id: "2", name: "Podcasts" },
-  { id: "3", name: "Movies" },
-  { id: "4", name: "TV Shows" },
-];
+const initialCategories: Category[] = [];
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>(initialCategories);
@@ -46,16 +42,30 @@ export default function CategoriesPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const handleAddCategory = () => {
-    if (newCategoryName.trim()) {
-      const newCategory: Category = {
-        id: Date.now().toString(),
-        name: newCategoryName.trim(),
-      };
-      setCategories([...categories, newCategory]);
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const data = await fetchCategories();
+        setCategories(data);
+      } catch (err: any) {
+        console.error("Error loading categories:", err.message);
+      }
+    };
+
+    loadCategories();
+  }, []);
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+
+    try {
+      const result = await createCategory({ name: newCategoryName.trim() });
+      setCategories((prev) => [result.category, ...prev]);
       setNewCategoryName("");
       setIsDialogOpen(false);
-    }
+    } catch (err: any) {
+      alert(err.message);
+    } 
   };
 
   const handleEditCategory = () => {
@@ -142,7 +152,6 @@ export default function CategoriesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
               <TableHead>Name</TableHead>
               <TableHead className="w-[100px]">Actions</TableHead>
             </TableRow>
@@ -150,7 +159,6 @@ export default function CategoriesPage() {
           <TableBody>
             {categories.map((category) => (
               <TableRow key={category.id}>
-                <TableCell className="font-medium">{category.id}</TableCell>
                 <TableCell>{category.name}</TableCell>
                 <TableCell>
                   <DropdownMenu>
