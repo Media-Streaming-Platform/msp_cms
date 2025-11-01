@@ -40,12 +40,12 @@ export default function MediaCard({
     <div className="bg-card rounded-lg border overflow-hidden hover:shadow-lg transition-shadow">
       {/* Thumbnail */}
       <div className="relative aspect-video bg-muted ">
-        {/* <Image
+        <Image
           src={content.thumbnail}
           alt={content.title}
           layout="fill"
           objectFit="cover"
-        /> */}
+        />
         <div className="absolute inset-0 bg-gradient to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center">
           {content.type === "audio" && (
             <AudioWaveform className="h-12 w-12 text-white/80" />

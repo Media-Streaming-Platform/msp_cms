@@ -33,7 +33,7 @@ interface MediaContent {
   title: string;
   description: string;
   type: "video" | "audio";
-  categories: string | null;
+  categories: string |{_id:string, name:string} |null;
   filePath: string;
   thumbnail: string;
   isPublished: boolean;
@@ -131,9 +131,9 @@ export default function PreviewPage() {
           hlsInstance.destroy();
         }
       };
-    } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
+    } else {
       // For Safari and other browsers that support native HLS
-      video.src = `${process.env.NEXT_PUBLIC_BASE_URL}${mediaData.filePath}`;
+      video.src = `${mediaData.filePath}`;
     }
   }, [mediaData]);
 
@@ -599,7 +599,7 @@ export default function PreviewPage() {
                         {mediaData.isPublished ? "Published" : "Draft"}
                       </Badge>
                       <Badge variant="outline">
-                        {mediaData.categories || "Uncategorized"}
+                        {mediaData.categories?.toString() || "Uncategorized"}
                       </Badge>
                       <Badge variant="outline">{mediaData.type}</Badge>
                     </div>
@@ -631,80 +631,11 @@ export default function PreviewPage() {
 
           {/* Analytics Sidebar */}
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center text-lg">
-                  <Eye className="w-5 h-5 mr-2" />
-                  Performance Analytics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {analyticsData.map((item, index) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-primary/10 rounded-lg">
-                          <Icon className="w-4 h-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">{item.label}</p>
-                          <p className="text-2xl font-bold">{item.value}</p>
-                        </div>
-                      </div>
-                      <Badge variant="default" className="bg-green-500">
-                        {item.change}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+           
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Content Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Content ID:</span>
-                  <span className="font-mono">{mediaData._id}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Type:</span>
-                  <Badge>{mediaData.type}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Category:</span>
-                  <span>{mediaData.categories || "Uncategorized"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Upload Date:</span>
-                  <span>
-                    {new Date(mediaData.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Last Updated:</span>
-                  <span>
-                    {new Date(mediaData.updatedAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status:</span>
-                  <Badge
-                    variant={mediaData.isPublished ? "default" : "secondary"}
-                  >
-                    {mediaData.isPublished ? "Published" : "Draft"}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+    
 
-            <Card>
+            {/* <Card>
               <CardHeader>
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
@@ -722,7 +653,7 @@ export default function PreviewPage() {
                   Edit Thumbnail
                 </Button>
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
         </div>
       </div>

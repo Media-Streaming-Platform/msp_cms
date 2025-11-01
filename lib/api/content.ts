@@ -8,17 +8,11 @@ export async function fetchContent() {
   return response.json();
 }
 
-export async function createContent(contentData: {
-  title: string;
-  description: string;
-  type: "video" | "audio";
-  category: string;
-  published: boolean;
-}) {
-  const response = await fetch(`${BASE_URL}/content/create-content`, {
+export async function createContent(contentData: any) {
+  const response = await fetch(`${BASE_URL}/media/upload-media`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(contentData),
+    // headers: { "Content-Type": "application/json" },
+    body: contentData,
   });
 
   if (!response.ok) {

@@ -4,6 +4,7 @@ export interface MediaContent {
   description: string;
   type: "video" | "audio";
   category: string;
+  categoryId?: string;
   thumbnail: string;
   filepath: string;
   published: boolean;

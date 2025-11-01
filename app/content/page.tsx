@@ -6,13 +6,15 @@ import AddContent from "@/components/AddContent";
 import MediaCard from "@/components/MediaCard";
 import { Plus, Video } from "lucide-react";
 import { MediaContent } from "@/types/media";
-import { fetchContent } from "@/lib/api/content";
+import { createContent, fetchContent } from "@/lib/api/content";
+import { fetchCategories } from "@/lib/api/categories";
 
 // Remove initialContent since we'll fetch from API
 // Add loading state and useEffect to fetch data
 
 export default function ContentPage() {
   const [content, setContent] = useState<MediaContent[]>([]);
+  const [categories, setCategories] = useState<{_id: string, name: string}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingContent, setEditingContent] = useState<MediaContent | null>(
@@ -34,11 +36,18 @@ export default function ContentPage() {
       }
     };
 
+    const loadCategory = async () =>{
+      const data = await  fetchCategories()
+      setCategories(data);
+    }
     loadContent();
+    loadCategory();
   }, []);
 
   const handleAddContent = (newContent: MediaContent) => {
-    setContent([...content, newContent]);
+    // setContent([...content, newContent]);
+    console.log(newContent)
+    createContent(newContent)
   };
 
   const handleEditContent = (updatedContent: MediaContent) => {
@@ -95,7 +104,7 @@ export default function ContentPage() {
 
       {/* Content Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {content.map((item) => (
+        {content && content.map((item) => (
           <MediaCard
             key={item._id}
             content={item}
@@ -126,15 +135,16 @@ export default function ContentPage() {
         onAddContent={handleAddContent}
         onEditContent={handleEditContent}
         editingContent={editingContent}
-        categories={[
-          "Music",
-          "Podcasts",
-          "Movies",
-          "TV Shows",
-          "Education",
-          "Health",
-          "Travel",
-        ]}
+        categories={categories}
+        // categories={[
+        //   "Music",
+        //   "Podcasts",
+        //   "Movies",
+        //   "TV Shows",
+        //   "Education",
+        //   "Health",
+        //   "Travel",
+        // ]}
       />
     </div>
   );
