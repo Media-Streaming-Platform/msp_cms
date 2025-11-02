@@ -6,73 +6,84 @@ import AddContent from "@/components/AddContent";
 import MediaCard from "@/components/MediaCard";
 import { Plus, Video } from "lucide-react";
 import { MediaContent } from "@/types/media";
-import { createContent, fetchContent } from "@/lib/api/content";
+import { createContent, deleteContent, fetchContent } from "@/lib/api/content";
 import { fetchCategories } from "@/lib/api/categories";
-
-// Remove initialContent since we'll fetch from API
-// Add loading state and useEffect to fetch data
 
 export default function ContentPage() {
   const [content, setContent] = useState<MediaContent[]>([]);
-  const [categories, setCategories] = useState<{_id: string, name: string}[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [categories, setCategories] = useState<{ _id: string; name: string }[]>(
+    []
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingContent, setEditingContent] = useState<MediaContent | null>(
     null
   );
 
-  // Fetch content on component mount
+  // Fetch content & categories
   useEffect(() => {
-    const loadContent = async () => {
+    const load = async () => {
       try {
         setIsLoading(true);
-        const data = await fetchContent();
-        setContent(data.mediaList);
-        console.log("Fetched content:", data.mediaList);
+        const [contentData, categoryData] = await Promise.all([
+          fetchContent(),
+          fetchCategories(),
+        ]);
+        setContent(contentData.mediaList);
+        setCategories(categoryData);
       } catch (error) {
-        console.error("Failed to fetch content:", error);
+        console.error("Error loading data:", error);
       } finally {
         setIsLoading(false);
       }
     };
-
-    const loadCategory = async () =>{
-      const data = await  fetchCategories()
-      setCategories(data);
-    }
-    loadContent();
-    loadCategory();
+    load();
   }, []);
 
-  const handleAddContent = (newContent: MediaContent) => {
-    // setContent([...content, newContent]);
-    console.log(newContent)
-    createContent(newContent)
+  // Add content with loading state
+  const handleAddContent = async (formData: FormData) => {
+    try {
+      setUploading(true);
+      const newContent = await createContent(formData);
+      setContent((prev) => [...prev, newContent]);
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error("Upload failed:", error);
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const handleEditContent = (updatedContent: MediaContent) => {
-    setContent(
-      content.map((item) =>
-        item._id === updatedContent._id ? updatedContent : item
-      )
-    );
-    setEditingContent(null);
+  const handleEditContent = async (formData: FormData) => {
+    try {
+      setUploading(true);
+      const updatedContent = await createContent(formData); // replace with your update API if exists
+      setContent((prev) =>
+        prev.map((item) =>
+          item._id === updatedContent._id ? updatedContent : item
+        )
+      );
+      setIsDialogOpen(false);
+      setEditingContent(null);
+    } catch (error) {
+      console.error("Edit failed:", error);
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const handleDeleteContent = (id: string) => {
-    setContent(content.filter((item) => item._id !== id));
+  const handleDeleteContent = async (id: string) => {
+    try {
+      await deleteContent(id);
+      setContent((prev) => prev.filter((item) => item._id !== id));
+    } catch (error) {
+      console.error("Delete failed:", error);
+    }
   };
 
-  const handleTogglePublish = (id: string) => {
-    setContent(
-      content.map((item) =>
-        item._id === id ? { ...item, isPublished: !item.published } : item
-      )
-    );
-  };
-
-  const handleEdit = (content: MediaContent) => {
-    setEditingContent(content);
+  const handleEdit = (item: MediaContent) => {
+    setEditingContent(item);
     setIsDialogOpen(true);
   };
 
@@ -97,20 +108,19 @@ export default function ContentPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Media Content</h1>
         <Button onClick={handleOpenAddDialog}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Content
+          <Plus className="mr-2 h-4 w-4" /> Add Content
         </Button>
       </div>
 
-      {/* Content Grid */}
+      {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {content && content.map((item) => (
+        {content.map((item) => (
           <MediaCard
             key={item._id}
             content={item}
             onEdit={handleEdit}
             onDelete={handleDeleteContent}
-            onTogglePublish={handleTogglePublish}
+            onTogglePublish={() => {}}
           />
         ))}
       </div>
@@ -123,28 +133,19 @@ export default function ContentPage() {
             Get started by uploading your first media file.
           </p>
           <Button onClick={handleOpenAddDialog}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Content
+            <Plus className="mr-2 h-4 w-4" /> Add Content
           </Button>
         </div>
       )}
 
       <AddContent
+        isUploading={uploading}
         isOpen={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         onAddContent={handleAddContent}
         onEditContent={handleEditContent}
         editingContent={editingContent}
         categories={categories}
-        // categories={[
-        //   "Music",
-        //   "Podcasts",
-        //   "Movies",
-        //   "TV Shows",
-        //   "Education",
-        //   "Health",
-        //   "Travel",
-        // ]}
       />
     </div>
   );

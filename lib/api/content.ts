@@ -47,7 +47,7 @@ export async function updateContent(
 }
 
 export async function deleteContent(id: string) {
-  const response = await fetch(`${BASE_URL}/content/delete-content/${id}`, {
+  const response = await fetch(`${BASE_URL}/media/delete-media/${id}`, {
     method: "DELETE",
   });
 
